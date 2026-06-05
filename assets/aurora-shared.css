@@ -1121,6 +1121,25 @@ td {
   background: rgba(16, 34, 59, 0.035);
 }
 
+.upload-card h4 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.upload-card .section-copy {
+  margin-top: 8px;
+}
+
+.upload-card .upload-row,
+.upload-card .notice {
+  margin-top: 14px;
+}
+
+.raffle-controls {
+  display: grid;
+  gap: 18px;
+}
+
 .raffle-layout {
   display: grid;
   grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);

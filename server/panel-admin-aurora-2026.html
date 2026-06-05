@@ -14,6 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
+    <link rel="icon" type="image/webp" href="./assets/aurora55logo.webp" />
     <link rel="stylesheet" href="./assets/aurora-shared.css" />
     <script src="./assets/aurora-data.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
@@ -274,7 +275,26 @@
             </div>
 
             <div class="raffle-layout">
-              <form id="raffleForm" class="raffle-form" novalidate>
+              <div class="raffle-controls">
+                <div class="upload-card">
+                  <div class="section-heading">
+                    <div>
+                      <h4>Cargar base JSON</h4>
+                      <p class="section-copy">Reemplaza los registros actuales para este sorteo.</p>
+                    </div>
+                  </div>
+
+                  <div class="upload-row">
+                    <label class="file-button" for="entriesJsonFile">
+                      Subir JSON
+                      <input id="entriesJsonFile" type="file" accept="application/json,.json" />
+                    </label>
+                  </div>
+
+                  <div id="importNotice" class="notice" role="status" aria-live="polite"></div>
+                </div>
+
+                <form id="raffleForm" class="raffle-form" novalidate>
                 <div class="field">
                   <label for="raffleTitle">Titulo del sorteo</label>
                   <input id="raffleTitle" type="text" maxlength="120" placeholder="Sorteo principal Aurora" />
@@ -320,7 +340,8 @@
                   <button id="raffleSubmitBtn" class="btn btn-primary" type="submit">Realizar sorteo</button>
                   <button id="copyWinnersBtn" class="btn btn-ghost" type="button">Copiar resultado</button>
                 </div>
-              </form>
+                </form>
+              </div>
 
               <aside class="raffle-stage">
                 <div class="eyebrow">Resultado</div>

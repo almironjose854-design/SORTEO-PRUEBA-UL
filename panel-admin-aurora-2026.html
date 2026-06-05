@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Aurora Inmobiliaria | Panel Admin (con sorteo animado)</title>
+    <title>Aurora Inmobiliaria | Panel Admin</title>
     <meta
       name="description"
-      content="Panel interno con estadisticas, graficos, sorteos animados e historial."
+      content="Panel interno con estadisticas, graficos, sorteos e historial."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,59 +14,13 @@
       href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
+    <link rel="icon" type="image/webp" href="./assets/aurora55logo.webp" />
     <link rel="stylesheet" href="./assets/aurora-shared.css" />
     <script src="./assets/aurora-data.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js" defer></script>
     <script src="./assets/aurora-admin.js" defer></script>
-
-    <!-- Estilos para el sorteo animado -->
-    <style>
-      /* Ocultamos la lógica original de resultados mientras corre la animación */
-      .raffle-stage .winner-reel-container {
-        position: relative;
-        width: 100%;
-        height: 160px;
-        overflow: hidden;
-        background: #1e293b;
-        border-radius: 16px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-top: 1rem;
-      }
-
-      .winner-reel {
-        display: flex;
-        white-space: nowrap;
-        transition: transform 0.1s linear; /* se modifica vía JS */
-        will-change: transform;
-      }
-
-      .reel-item {
-        flex: 0 0 auto;
-        padding: 0 2rem;
-        font-size: 2.2rem;
-        font-weight: 800;
-        color: #facc15;
-        text-transform: uppercase;
-        line-height: 1.2;
-        text-align: center;
-        min-width: 220px;
-      }
-
-      /* Durante la animación, ocultamos la lista normal de ganadores */
-      .raffle-stage .winner-list {
-        display: none;
-      }
-      .raffle-stage.show-winners .winner-list {
-        display: block;
-      }
-      .raffle-stage.show-winners .winner-reel-container {
-        display: none;
-      }
-    </style>
   </head>
   <body class="page-admin">
     <div class="container">
@@ -311,7 +265,7 @@
             <div id="emptyEntriesState" class="empty-state hidden">No hay registros para los filtros actuales.</div>
           </section>
 
-          <!-- MODULO DE SORTEO CON ANIMACIÓN -->
+          <!-- MODULO DE SORTEO -->
           <section id="raffle" class="surface raffle-card">
             <div class="section-heading">
               <div>
@@ -322,7 +276,26 @@
             </div>
 
             <div class="raffle-layout">
-              <form id="raffleForm" class="raffle-form" novalidate>
+              <div class="raffle-controls">
+                <div class="upload-card">
+                  <div class="section-heading">
+                    <div>
+                      <h4>Cargar base JSON</h4>
+                      <p class="section-copy">Reemplaza los registros actuales para este sorteo.</p>
+                    </div>
+                  </div>
+
+                  <div class="upload-row">
+                    <label class="file-button" for="entriesJsonFile">
+                      Subir JSON
+                      <input id="entriesJsonFile" type="file" accept="application/json,.json" />
+                    </label>
+                  </div>
+
+                  <div id="importNotice" class="notice" role="status" aria-live="polite"></div>
+                </div>
+
+                <form id="raffleForm" class="raffle-form" novalidate>
                 <div class="field">
                   <label for="raffleTitle">Título del sorteo</label>
                   <input id="raffleTitle" type="text" maxlength="120" placeholder="Sorteo principal Aurora" />
@@ -368,19 +341,14 @@
                   <button id="raffleSubmitBtn" class="btn btn-primary" type="submit">Realizar sorteo</button>
                   <button id="copyWinnersBtn" class="btn btn-ghost" type="button">Copiar resultado</button>
                 </div>
-              </form>
+                </form>
+              </div>
 
               <aside class="raffle-stage" id="raffleStage">
                 <div class="eyebrow">Resultado</div>
                 <h3>Ganadores y suplentes</h3>
                 <p class="helper-line">El último sorteo guardado se actualiza automáticamente aquí.</p>
 
-                <!-- Contenedor de la animación (visible solo durante el sorteo) -->
-                <div id="reelContainer" class="winner-reel-container">
-                  <div id="reel" class="winner-reel"></div>
-                </div>
-
-                <!-- Lista real de ganadores (visible al final) -->
                 <div id="raffleResults" class="winner-list"></div>
               </aside>
             </div>
@@ -399,203 +367,5 @@
       </main>
     </div>
 
-    <!-- Script de animación (se ejecuta después de aurora-admin.js) -->
-    <script>
-      (function() {
-        // Esperamos a que el DOM y los scripts externos estén listos
-        window.addEventListener('load', () => {
-          const raffleForm = document.getElementById('raffleForm');
-          const reelContainer = document.getElementById('reelContainer');
-          const reel = document.getElementById('reel');
-          const raffleResults = document.getElementById('raffleResults');
-          const stage = document.getElementById('raffleStage');
-
-          if (!raffleForm) return;
-
-          // Interceptamos el submit del formulario
-          raffleForm.addEventListener('submit', function(e) {
-            e.preventDefault(); // Detenemos el comportamiento por defecto
-
-            // Obtención de datos de participantes (usamos la variable global que expone el admin)
-            const allRecords = window.__auroraRecords || []; // Asegúrate de que el script aurora-data.js exponga esta variable
-            if (!allRecords.length) {
-              alert('No hay registros cargados.');
-              return;
-            }
-
-            // Leer filtros
-            const ownership = document.getElementById('raffleOwnershipFilter').value;
-            const winnerCount = parseInt(document.getElementById('raffleWinnerCount').value, 10) || 1;
-            const excludePrevious = document.getElementById('raffleExcludePrevious').checked;
-            const title = document.getElementById('raffleTitle').value || 'Sorteo Aurora';
-
-            // Filtrar pool
-            let pool = allRecords;
-
-            // Filtro por lote (asumimos que el campo es "hasLot" con valores "yes"/"no")
-            if (ownership === 'with') {
-              pool = pool.filter(r => r.hasLot === 'yes');
-            } else if (ownership === 'without') {
-              pool = pool.filter(r => r.hasLot === 'no');
-            }
-
-            // Excluir ganadores previos (si existe historial en localStorage o de una variable global)
-            if (excludePrevious) {
-              const history = JSON.parse(localStorage.getItem('auroraDrawHistory') || '[]');
-              const previousWinners = new Set();
-              history.forEach(draw => {
-                (draw.winners || []).forEach(w => previousWinners.add(w.fullName));
-                (draw.reserves || []).forEach(r => previousWinners.add(r.fullName));
-              });
-              pool = pool.filter(r => !previousWinners.has(r.fullName));
-            }
-
-            if (pool.length === 0) {
-              alert('No hay participantes disponibles con los filtros actuales.');
-              return;
-            }
-
-            // Mezclar aleatoriamente el pool
-            const shuffled = [...pool].sort(() => Math.random() - 0.5);
-
-            // Preparar el reel: repetir varias veces la lista para un efecto más largo
-            const repeatCount = 5; // veces que se repite la secuencia
-            const reelItems = [];
-            for (let i = 0; i < repeatCount; i++) {
-              shuffled.forEach(rec => {
-                reelItems.push(rec.fullName);
-              });
-            }
-            // Al final agregamos el ganador (que se revelará al detenerse)
-            const selectedWinners = [];
-            const reserveCount = parseInt(document.getElementById('raffleReserveCount').value, 10) || 0;
-            const totalNeeded = winnerCount + reserveCount;
-            const chosenOnes = shuffled.slice(0, totalNeeded);
-            const winners = chosenOnes.slice(0, winnerCount);
-            const reserves = chosenOnes.slice(winnerCount);
-
-            // Guardamos los resultados para mostrarlos después
-            selectedWinners.push({ winners, reserves });
-
-            // Construir el reel con un marcador al final para saber dónde frenar
-            const finalWinnerName = winners.length > 0 ? winners[0].fullName : (pool.length > 0 ? pool[0].fullName : '---');
-            // Insertar el ganador real al final de la secuencia para que la animación pare justo en él
-            reelItems.push(finalWinnerName);
-
-            // Llenar el reel con elementos span
-            reel.innerHTML = '';
-            reelItems.forEach(name => {
-              const span = document.createElement('span');
-              span.className = 'reel-item';
-              span.textContent = name;
-              reel.appendChild(span);
-            });
-
-            // Mostrar el contenedor de animación, ocultar la lista de ganadores
-            stage.classList.remove('show-winners');
-            reelContainer.style.display = 'flex';
-            raffleResults.innerHTML = '';
-
-            // Calcular ancho total del reel
-            const totalWidth = reel.scrollWidth;
-            const containerWidth = reelContainer.clientWidth;
-
-            // Configuración de la animación
-            const initialSpeed = 15; // px por frame (alta velocidad)
-            const minSpeed = 0.2;
-            const deceleration = 0.985; // factor de freno (más pequeño frena más rápido)
-            let currentX = 0;
-            let speed = initialSpeed;
-            let animationId;
-            let stopped = false;
-
-            // Posición final: queremos que el último elemento (ganador) quede centrado
-            const lastItem = reel.lastElementChild;
-            const lastItemLeft = lastItem.offsetLeft + lastItem.offsetWidth / 2;
-            const targetX = -(lastItemLeft - containerWidth / 2);
-
-            function animate() {
-              if (stopped) return;
-
-              currentX -= speed;
-              reel.style.transform = `translateX(${currentX}px)`;
-
-              // Frenado progresivo
-              speed *= deceleration;
-
-              // Si la velocidad es muy baja o pasamos el punto objetivo, detenemos
-              const distanceToTarget = targetX - currentX;
-              if (speed < minSpeed && Math.abs(distanceToTarget) < 30) {
-                // Ajustar posición exacta
-                reel.style.transition = 'transform 0.5s ease-out';
-                reel.style.transform = `translateX(${targetX}px)`;
-                stopped = true;
-                clearTimeout(animationTimeout);
-                // Mostrar resultado después de un breve retardo
-                setTimeout(showResults, 1200);
-                return;
-              }
-
-              // Si la animación se sale mucho del objetivo, forzamos parada suave
-              if (currentX < targetX - 500 && speed < 2) {
-                reel.style.transition = 'transform 0.8s ease-out';
-                reel.style.transform = `translateX(${targetX}px)`;
-                stopped = true;
-                clearTimeout(animationTimeout);
-                setTimeout(showResults, 1000);
-                return;
-              }
-
-              animationTimeout = setTimeout(() => requestAnimationFrame(animate), 16);
-            }
-
-            let animationTimeout;
-            // Iniciar animación
-            requestAnimationFrame(animate);
-
-            function showResults() {
-              // Ocultar reel, mostrar resultados
-              reelContainer.style.display = 'none';
-              stage.classList.add('show-winners');
-
-              // Construir HTML de ganadores
-              let html = '';
-              if (winners.length) {
-                html += '<div class="winner-group"><h4>🏆 Ganadores</h4>';
-                winners.forEach(w => {
-                  html += `<div class="winner-entry">${w.fullName} <span class="winner-meta">CI: ${w.ci} | 📞 ${w.phone}</span></div>`;
-                });
-                html += '</div>';
-              }
-              if (reserves.length) {
-                html += '<div class="winner-group"><h4>🔹 Suplentes</h4>';
-                reserves.forEach(r => {
-                  html += `<div class="winner-entry">${r.fullName} <span class="winner-meta">CI: ${r.ci} | 📞 ${r.phone}</span></div>`;
-                });
-                html += '</div>';
-              }
-              raffleResults.innerHTML = html || '<p>Sin resultados.</p>';
-
-              // Guardar sorteo en historial (simulado en localStorage)
-              const drawRecord = {
-                date: new Date().toISOString(),
-                title: title,
-                winners: winners.map(w => ({ fullName: w.fullName, ci: w.ci, phone: w.phone })),
-                reserves: reserves.map(r => ({ fullName: r.fullName, ci: r.ci, phone: r.phone })),
-                notes: document.getElementById('raffleNotes').value
-              };
-              const history = JSON.parse(localStorage.getItem('auroraDrawHistory') || '[]');
-              history.unshift(drawRecord);
-              localStorage.setItem('auroraDrawHistory', JSON.stringify(history));
-
-              // Opcional: si existe la función global `refreshDrawHistory` del admin, la llamamos
-              if (typeof window.refreshDrawHistory === 'function') {
-                window.refreshDrawHistory();
-              }
-            }
-          });
-        });
-      })();
-    </script>
   </body>
 </html>

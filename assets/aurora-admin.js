@@ -56,7 +56,9 @@ document.addEventListener("DOMContentLoaded", () => {
     copyWinnersBtn: document.getElementById("copyWinnersBtn"),
     drawHistory: document.getElementById("drawHistory"),
     chartDaily: document.getElementById("chartDaily"),
-    chartOwnership: document.getElementById("chartOwnership")
+    chartOwnership: document.getElementById("chartOwnership"),
+    entriesJsonFile: document.getElementById("entriesJsonFile"),
+    importNotice: document.getElementById("importNotice")
   };
 
   core.applyBrandImages();
@@ -89,16 +91,22 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.raffleReserveCount.addEventListener("input", renderRafflePoolInfo);
     elements.raffleExcludePrevious.addEventListener("change", renderRafflePoolInfo);
     elements.copyWinnersBtn.addEventListener("click", copyLatestResult);
+    elements.entriesJsonFile?.addEventListener("change", handleEntriesImport);
   }
 
   async function bootstrap() {
     try {
-      await core.api.getAdminSession();
-      showDashboard();
-      await loadDashboard();
+      const session = await core.api.getAdminSession();
+      if (session?.authenticated) {
+        showDashboard();
+        await loadDashboard();
+        return;
+      }
     } catch (error) {
-      showLogin();
+      // Si el chequeo falla por red o servidor, dejamos visible el login.
     }
+
+    showLogin();
   }
 
   async function handleLogin(event) {
@@ -139,6 +147,47 @@ document.addEventListener("DOMContentLoaded", () => {
     state.lastDrawSnapshot = null;
     destroyCharts();
     showLogin();
+  }
+
+  async function handleEntriesImport(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    hideNotice(elements.importNotice);
+
+    if (!file.name.toLowerCase().endsWith(".json")) {
+      showNotice(elements.importNotice, "Selecciona un archivo JSON valido.", "error");
+      event.target.value = "";
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "El archivo JSON reemplazara todos los registros actuales y reiniciara el historial de sorteos. Deseas continuar?"
+    );
+
+    if (!confirmed) {
+      event.target.value = "";
+      return;
+    }
+
+    setImporting(true);
+
+    try {
+      const payload = JSON.parse(await file.text());
+      const result = await core.api.importAdminEntries(payload);
+      state.lastDrawSnapshot = null;
+      showNotice(
+        elements.importNotice,
+        `Base reemplazada correctamente: ${result.importedCount} registro(s) cargado(s).`,
+        "success"
+      );
+      await loadDashboard();
+    } catch (error) {
+      showNotice(elements.importNotice, buildImportErrorMessage(error), "error");
+    } finally {
+      setImporting(false);
+      event.target.value = "";
+    }
   }
 
   async function loadDashboard() {
@@ -1053,7 +1102,8 @@ document.addEventListener("DOMContentLoaded", () => {
       {
         "entry-created": "Nuevo registro",
         "entry-deleted": "Registro eliminado",
-        "draw-created": "Sorteo generado"
+        "draw-created": "Sorteo generado",
+        "entries-imported": "Base JSON importada"
       }[type] || "Actividad"
     );
   }
@@ -1079,6 +1129,22 @@ document.addEventListener("DOMContentLoaded", () => {
   function setRaffleSubmitting(isSubmitting) {
     elements.raffleSubmitBtn.disabled = isSubmitting;
     elements.raffleSubmitBtn.textContent = isSubmitting ? "Sorteando..." : "Realizar sorteo";
+  }
+
+  function setImporting(isImporting) {
+    if (elements.entriesJsonFile) {
+      elements.entriesJsonFile.disabled = isImporting;
+    }
+  }
+
+  function buildImportErrorMessage(error) {
+    if (error instanceof SyntaxError) {
+      return "El archivo no tiene un JSON valido.";
+    }
+
+    const errors = Array.isArray(error?.payload?.errors) ? error.payload.errors : [];
+    const detail = errors.length ? ` ${errors.slice(0, 3).join(" ")}` : "";
+    return `${error?.message || "No se pudo importar el archivo JSON."}${detail}`;
   }
 
   function showDashboard() {

@@ -89,6 +89,12 @@
     getAdminDashboard() {
       return requestJson("api/admin/dashboard");
     },
+    importAdminEntries(payload) {
+      return requestJson("api/admin/entries/import", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+    },
     createDraw(payload) {
       return requestJson("api/admin/draws", {
         method: "POST",

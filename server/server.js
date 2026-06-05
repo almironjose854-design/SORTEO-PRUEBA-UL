@@ -50,7 +50,7 @@ app.use(
     contentSecurityPolicy: false
   })
 );
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "10mb" }));
 
 function appendOriginalQuery(req, targetPath) {
   const queryIndex = req.originalUrl.indexOf("?");
@@ -101,6 +101,10 @@ function servePublicPage(req, res) {
 
 function serveAdminPage(req, res) {
   res.sendFile(resolvePublicFile("panel-admin-aurora-2026.html"));
+}
+
+function serveFavicon(req, res) {
+  res.sendFile(resolvePublicFile(path.join("assets", "aurora55logo.webp")));
 }
 
 function serveMountedPublicPage(req, res, next) {
@@ -233,6 +237,155 @@ function findDuplicateEntry(entry, existingEntries = []) {
   }
 
   return null;
+}
+
+function normalizeImportKey(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function getImportValue(source, aliases) {
+  const valuesByKey = new Map(
+    Object.entries(source || {}).map(([key, value]) => [normalizeImportKey(key), value])
+  );
+
+  for (const alias of aliases) {
+    const key = normalizeImportKey(alias);
+    if (valuesByKey.has(key)) return valuesByKey.get(key);
+  }
+
+  return undefined;
+}
+
+function parseImportedBoolean(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value > 0;
+  if (value === undefined || value === null || value === "") return false;
+
+  const normalized = normalizeImportKey(value);
+  if (["1", "s", "si", "yes", "y", "true", "tiene", "lote", "con", "conlote", "tienelote"].includes(normalized)) {
+    return true;
+  }
+  if (
+    ["0", "n", "no", "false", "sin", "sinlote", "notiene", "notengo", "notienelote", "notengolote", "ninguno"].includes(
+      normalized
+    )
+  ) {
+    return false;
+  }
+
+  return Boolean(value);
+}
+
+function normalizeImportedEntry(rawEntry, index, usedIds) {
+  if (!rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) {
+    return { errors: [`Fila ${index + 1}: el registro debe ser un objeto JSON.`] };
+  }
+
+  const fullName = normalizeName(
+    getImportValue(rawEntry, ["fullName", "full_name", "name", "nombre", "nombreCompleto", "nombreApellido", "participante"])
+  );
+  const ci = normalizeDigits(
+    getImportValue(rawEntry, ["ci", "cedula", "cedulaIdentidad", "documento", "document", "dni"])
+  );
+  const phone = normalizePhone(
+    getImportValue(rawEntry, ["phone", "telefono", "teléfono", "celular", "mobile", "whatsapp", "numero", "nroTelefono"])
+  );
+  const email = normalizeEmail(
+    getImportValue(rawEntry, ["email", "correo", "correoElectronico", "mail", "eMail"])
+  );
+  const hasLot = parseImportedBoolean(
+    getImportValue(rawEntry, ["hasLot", "has_lot", "tieneLote", "tiene_lote", "lote", "conLote", "con_lote"])
+  );
+  const consentValue = getImportValue(rawEntry, ["consent", "consentimiento", "autorizacion", "autorización"]);
+  const createdAtValue = getImportValue(rawEntry, ["createdAt", "created_at", "fecha", "fechaRegistro"]);
+  const candidateId = String(getImportValue(rawEntry, ["id", "entryId", "entry_id"]) || "").trim();
+  const parsedCreatedAt = parseIsoDate(createdAtValue);
+  const errors = [];
+
+  if (!fullName || fullName.length < 2) {
+    errors.push(`Fila ${index + 1}: falta nombre del participante.`);
+  }
+
+  if (!ci && !phone && !email) {
+    errors.push(`Fila ${index + 1}: agrega cedula, telefono o correo para identificar el registro.`);
+  }
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errors.push(`Fila ${index + 1}: correo no valido.`);
+  }
+
+  if (errors.length) return { errors };
+
+  const id = candidateId && !usedIds.has(candidateId) ? candidateId : crypto.randomUUID();
+  usedIds.add(id);
+
+  return {
+    entry: {
+      id,
+      fullName,
+      ci,
+      phone,
+      email,
+      hasLot,
+      consent:
+        consentValue === undefined || consentValue === null || consentValue === ""
+          ? true
+          : parseImportedBoolean(consentValue),
+      source: "json-import",
+      createdAt: (parsedCreatedAt || new Date()).toISOString()
+    }
+  };
+}
+
+function normalizeImportedEntriesPayload(payload) {
+  const rows = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.entries)
+      ? payload.entries
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : null;
+
+  if (!rows) {
+    return {
+      valid: false,
+      message: "El JSON debe ser un array de participantes o un objeto con entries/data."
+    };
+  }
+
+  if (!rows.length) {
+    return {
+      valid: false,
+      message: "El archivo JSON no contiene participantes."
+    };
+  }
+
+  const usedIds = new Set();
+  const entries = [];
+  const errors = [];
+
+  rows.forEach((row, index) => {
+    const normalized = normalizeImportedEntry(row, index, usedIds);
+    if (normalized.errors) {
+      errors.push(...normalized.errors);
+      return;
+    }
+    entries.push(normalized.entry);
+  });
+
+  if (errors.length) {
+    return {
+      valid: false,
+      message: `Se encontraron ${errors.length} error(es) en el JSON.`,
+      errors: errors.slice(0, 20)
+    };
+  }
+
+  return { valid: true, entries };
 }
 
 let entryWriteQueue = Promise.resolve();
@@ -501,8 +654,23 @@ app.post("/api/public/entries", async (req, res) => {
   });
 });
 
-app.get("/api/admin/session", requireAdmin, (req, res) => {
-  res.json({ authenticated: true, user: req.adminUser });
+app.get("/api/admin/session", (req, res) => {
+  const cookies = parseCookies(req.headers.cookie || "");
+  const token = cookies[SESSION_COOKIE];
+  const expiresAt = token ? sessions.get(token) : null;
+
+  if (!token || !expiresAt || expiresAt < Date.now()) {
+    if (token) {
+      sessions.delete(token);
+      clearSession(res);
+    }
+
+    res.json({ authenticated: false, user: null });
+    return;
+  }
+
+  sessions.set(token, Date.now() + SESSION_TTL_MS);
+  res.json({ authenticated: true, user: ADMIN_USER });
 });
 
 app.post("/api/admin/login", (req, res) => {
@@ -538,6 +706,30 @@ app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
     activity,
     draws,
     summary: buildSummary(entries, draws)
+  });
+});
+
+app.post("/api/admin/entries/import", requireAdmin, async (req, res) => {
+  const imported = normalizeImportedEntriesPayload(req.body);
+
+  if (!imported.valid) {
+    res.status(400).json({
+      message: imported.message,
+      errors: imported.errors || []
+    });
+    return;
+  }
+
+  await withEntryWriteLock(async () => {
+    await writeEntries(imported.entries);
+    await writeDraws([]);
+    await addActivity("entries-imported", `${imported.entries.length} registros importados desde JSON`);
+  });
+
+  res.json({
+    success: true,
+    importedCount: imported.entries.length,
+    resetDraws: true
   });
 });
 
@@ -605,6 +797,8 @@ app.delete("/api/admin/entries/:id", requireAdmin, async (req, res) => {
 });
 
 app.get("/", servePublicPage);
+
+app.get("/favicon.ico", serveFavicon);
 
 app.get("/HTML.html", servePublicPage);
 
